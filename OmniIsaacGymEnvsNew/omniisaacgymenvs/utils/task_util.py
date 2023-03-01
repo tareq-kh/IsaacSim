@@ -41,6 +41,7 @@ def initialize_task(config, env, init_sim=True):
     from omniisaacgymenvs.tasks.shadow_hand import ShadowHandTask
     from omniisaacgymenvs.tasks.crazyflie import CrazyflieTask
     from omniisaacgymenvs.tasks.roblearn_single import RoblearnSingleTask
+    from omniisaacgymenvs.tasks.roblearn import RoblearnTask
     
     # Mappings from strings to environments
     task_map = {
@@ -58,7 +59,8 @@ def initialize_task(config, env, init_sim=True):
         "ShadowHand": ShadowHandTask,
         "ShadowHandOpenAI_FF": ShadowHandTask,
         "ShadowHandOpenAI_LSTM": ShadowHandTask,
-        "RoblearnSingle": RoblearnSingleTask
+        "RoblearnSingle": RoblearnSingleTask,
+        "Roblearn": RoblearnTask
     }
 
     from .config_utils.sim_config import SimConfig
