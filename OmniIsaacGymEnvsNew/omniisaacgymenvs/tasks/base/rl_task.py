@@ -36,11 +36,12 @@ from omni.isaac.core.utils.types import ArticulationAction
 from omni.isaac.core.utils.prims import define_prim
 from omni.isaac.cloner import GridCloner
 from omniisaacgymenvs.tasks.utils.usd_utils import create_distant_light
-from omniisaacgymenvs.utils.domain_randomization.randomize import Randomizer
 import omni.kit
 from omni.kit.viewport.utility.camera_state import ViewportCameraState
 from omni.kit.viewport.utility import get_viewport_from_window_name
 from pxr import Gf
+
+import omni
 
 class RLTask(BaseTask):
 
@@ -63,11 +64,10 @@ class RLTask(BaseTask):
 
         self.test = self._cfg["test"]
         self._device = self._cfg["sim_device"]
-        self._dr_randomizer = Randomizer(self._sim_config)
         print("Task Device:", self._device)
 
-        self.randomize_actions = False
-        self.randomize_observations = False
+        #self._num_envs = self._cfg["task"]["env"]["numEnvs"]
+        #self._num_agents = self._cfg["task"]["env"]["numAgents"]
 
         self.clip_obs = self._cfg["task"]["env"].get("clipObservations", np.Inf)
         self.clip_actions = self._cfg["task"]["env"].get("clipActions", np.Inf)
@@ -94,8 +94,10 @@ class RLTask(BaseTask):
 
         self._cloner = GridCloner(spacing=self._env_spacing)
         self._cloner.define_base_env(self.default_base_env_path)
-
         define_prim(self.default_zero_env_path)
+        
+        self.prim_paths = None
+        self.collision_filter_global_paths = None
 
         self.cleanup()
 
@@ -103,34 +105,38 @@ class RLTask(BaseTask):
         """ Prepares torch buffers for RL data collection."""
 
         # prepare tensors
-        self.obs_buf = torch.zeros((self._num_envs, self.num_observations), device=self._device, dtype=torch.float)
-        self.states_buf = torch.zeros((self._num_envs, self.num_states), device=self._device, dtype=torch.float)
-        self.rew_buf = torch.zeros(self._num_envs, device=self._device, dtype=torch.float)
-        self.reset_buf = torch.ones(self._num_envs, device=self._device, dtype=torch.long)
-        self.progress_buf = torch.zeros(self._num_envs, device=self._device, dtype=torch.long)
+        self.obs_buf = torch.zeros((self._num_envs * self._num_agents, self.num_observations), device=self._device, dtype=torch.float)   
+        self.states_buf = torch.zeros((self._num_envs * self._num_agents, self.num_states), device=self._device, dtype=torch.float)
+        self.rew_buf = torch.zeros(self._num_envs * self._num_agents, device=self._device, dtype=torch.float)
+        self.reset_buf = torch.ones(self._num_envs * self._num_agents, device=self._device, dtype=torch.long)
+        self.progress_buf = torch.zeros(self._num_envs * self._num_agents, device=self._device, dtype=torch.long)
         self.extras = {}
 
-    def set_up_scene(self, scene, replicate_physics=True) -> None:
+    def set_up_scene(self, scene) -> None:
         """ Clones environments based on value provided in task config and applies collision filters to mask 
             collisions across environments.
 
         Args:
             scene (Scene): Scene to add objects to.
-            replicate_physics (bool): Clone physics using PhysX API for better performance
         """
-
+        
         super().set_up_scene(scene)
 
         collision_filter_global_paths = list()
         if self._sim_config.task_config["sim"].get("add_ground_plane", True):
-            self._ground_plane_path = "/World/defaultGroundPlane"
+            #self._ground_plane_path = "/World/defaultGroundPlane"
+            self._ground_plane_path = "/defaultGroundPlane"
             collision_filter_global_paths.append(self._ground_plane_path)
             scene.add_default_ground_plane(prim_path=self._ground_plane_path)
-        prim_paths = self._cloner.generate_paths("/World/envs/env", self._num_envs)
-        self._env_pos = self._cloner.clone(source_prim_path="/World/envs/env_0", prim_paths=prim_paths, replicate_physics=replicate_physics)
+            
+        #prim_paths = self._cloner.generate_paths("/World/envs/env", self._num_envs)
+        prim_paths = self._cloner.generate_paths("/envs/env", self._num_envs)
+        #self._env_pos = self._cloner.clone(source_prim_path="/World/envs/env_0", prim_paths=prim_paths)
+        self._env_pos = self._cloner.clone(source_prim_path="/envs/env_0", prim_paths=prim_paths)
         self._env_pos = torch.tensor(np.array(self._env_pos), device=self._device, dtype=torch.float)
         self._cloner.filter_collisions(
-            self._env._world.get_physics_context().prim_path, "/World/collisions", prim_paths, collision_filter_global_paths)
+            #self._env._world.get_physics_context().prim_path, "/World/collisions", prim_paths, collision_filter_global_paths)
+            self._env._world.get_physics_context().prim_path, "/collisions", prim_paths, collision_filter_global_paths)
         self.set_initial_camera_params(camera_position=[10, 10, 3], camera_target=[0, 0, 0])
         if self._sim_config.task_config["sim"].get("add_distant_light", True):
             create_distant_light()
@@ -150,7 +156,9 @@ class RLTask(BaseTask):
         Returns:
             default_base_env_path(str): Defaults to "/World/envs".
         """
-        return "/World/envs"
+        #return "/World/envs"
+        #return "/physicsScene/envs"
+        return "/envs"
 
     @property
     def default_zero_env_path(self):
